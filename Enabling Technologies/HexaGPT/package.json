@@ -1,0 +1,120 @@
+{
+    "name": "notebook-chatcompletion",
+    "displayName": "Jupyter Notebook ChatCompletion",
+    "description": "",
+    "version": "0.0.1",
+    "engines": {
+      "vscode": "^1.76.0"
+    },
+    "categories": [
+      "Notebooks"
+    ],
+    "activationEvents": [
+      "onNotebook:jupyter-notebook"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+      "commands": [
+        {
+          "command": "notebook-chatcompletion.sendCellAndAbove",
+          "title": "Complete with this Cell and Above",
+          "icon": "$(comment-discussion)"
+        },
+        {
+          "command": "notebook-chatcompletion.sendCell",
+          "title": "Complete with this Cell",
+          "icon": "$(comment)"
+        },
+        {
+          "command": "notebook-chatcompletion.setTemperature",
+          "title": "Set Temperature",
+          "icon": "$(flame)"
+        },
+        {
+          "command": "notebook-chatcompletion.setModel",
+          "title": "Set Model",
+          "icon": "$(hubot)"
+        },
+        {
+          "command": "notebook-chatcompletion.setRoleAssistant",
+          "title": "Set Role to Assistant",
+          "icon": "$(hubot)"
+        },
+        {
+          "command": "notebook-chatcompletion.setRoleSystem",
+          "title": "Set Role to System",
+          "icon": "$(milestone)"
+        }
+      ],
+      "keybindings": [
+        {
+          "command": "notebook-chatcompletion.sendCellAndAbove",
+          "key": "ctrl+shift+enter",
+          "mac": "ctrl+cmd+enter"
+        },
+        {
+          "command": "notebook-chatcompletion.sendCell",
+          "key": "ctrl+shift+pagedown",
+          "mac": "ctrl+cmd+pagedown"
+        }
+      ],
+      "menus": {
+        "notebook/toolbar": [
+          {
+            "command": "notebook-chatcompletion.setTemperature",
+            "group": "navigation@1"
+          },
+          {
+            "command": "notebook-chatcompletion.setModel",
+            "group": "navigation@1"
+          }
+        ],
+        "notebook/cell/title": [
+          {
+            "command": "notebook-chatcompletion.sendCellAndAbove",
+            "group": "inline"
+          },
+          {
+            "command": "notebook-chatcompletion.sendCell",
+            "group": "inline"
+          },
+          {
+            "command": "notebook-chatcompletion.setRoleAssistant",
+            "group": "inline"
+          },
+          {
+            "command": "notebook-chatcompletion.setRoleSystem",
+            "group": "inline"
+          }
+        ]
+      }
+    },
+    "scripts": {
+      "vscode:prepublish": "npm run compile",
+      "compile": "tsc -p ./",
+      "watch": "tsc -watch -p ./",
+      "pretest": "npm run compile && npm run lint",
+      "lint": "eslint src --ext ts",
+      "test": "node ./out/test/runTest.js"
+    },
+    "devDependencies": {
+      "@types/glob": "^8.1.0",
+      "@types/mocha": "^10.0.1",
+      "@types/node": "16.x",
+      "@types/vscode": "^1.76.0",
+      "@typescript-eslint/eslint-plugin": "^5.56.0",
+      "@typescript-eslint/parser": "^5.56.0",
+      "@vscode/test-electron": "^2.3.0",
+      "eslint": "^8.36.0",
+      "glob": "^8.1.0",
+      "mocha": "^10.2.0",
+      "typescript": "^4.9.5"
+    },
+    "extensionDependencies": [
+      "ms-toolsai.jupyter"
+    ],
+    "dependencies": {
+      "openai": "^3.2.1",
+      "ws": "^8.13.0"
+    }
+  }

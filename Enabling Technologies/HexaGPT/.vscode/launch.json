@@ -1,0 +1,14 @@
+{
+  "version": "2.0.0",
+  "configurations": [
+    {
+      "name": "Debug Extension", // A user-friendly name for this debug configuration.
+      "type": "extensionHost", // Specifies that the target to debug is a VS Code extension.
+      "request": "launch", // Indicates that this configuration starts and debugs a new instance of the extension host.
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}" // Tells VS Code to load your extension directly from your project's workspace folder.
+      ],
+      "outFiles": ["${workspaceFolder}/out/**/*.js"] // Specifies where to find the compiled JavaScript files (output of TypeScript compilation, if applicable).
+    }
+  ]
+}
