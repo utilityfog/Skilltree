@@ -12,28 +12,31 @@ class MethodWrapper:
         self.owner = owner
 
     def __call__(self, *args, **kwargs):
-        # Retrieve the current call chain and ID
         current_call_chain_id = call_chain_id_var.get()
         call_chain = call_chain_var.get()
 
-        method_name = self.method.__name__
+        method_name = f"{self.owner.__class__.__name__}.{self.method.__name__}"
         print(f"Executing {method_name} because it's part of the call chain.")
 
-        # Check for direct continuation in the call chain
+        # Nested / Chained method handling
         if current_call_chain_id is not None:
             call_chain.append(method_name)
             call_chain_var.set(call_chain)
-        
-        # Execute the wrapped method
+        else:
+            # This is a new call chain, possibly due to direct method invocation outside the initial entry point
+            call_chain_id = uuid.uuid4()
+            call_chain_id_var.set(call_chain_id)
+            call_chain_var.set([method_name])
+
         result = self.method(self.owner, *args, **kwargs)
 
-        # Attempt to wrap the result if it's a class instance
-        if inspect.isclass(type(result)):
+        if inspect.isclass(type(result)) or inspect.ismethod(result) or callable(result):
             result = Proxy(result)
 
-        if current_call_chain_id is not None:
-            call_chain.pop()
-            call_chain_var.set(call_chain)
+        # Reset call chain only if this was the initiation of a new chain
+        if current_call_chain_id is None:
+            call_chain_id_var.set(None)
+            call_chain_var.set([])
 
         return result
 
@@ -55,12 +58,11 @@ def entry_point(method):
         call_chain_id_var.set(call_chain_id)
         call_chain_var.set([method.__name__])
 
-        # Execute the method, wrap the result if it's a class instance
         result = method(*args, **kwargs)
-        if inspect.isclass(type(result)):
+
+        if inspect.isclass(type(result)) or inspect.ismethod(result) or callable(result):
             result = Proxy(result)
 
-        # Cleanup after execution
         call_chain_id_var.set(None)
         call_chain_var.set([])
 
