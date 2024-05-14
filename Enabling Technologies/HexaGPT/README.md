@@ -1,12 +1,17 @@
 ---
-title: PDF RAG Tutorial Repo
+title: HEXA GPT
 emoji: 😜
-app_file: app/app.py
+app_file: frontend/App.tsx
 pinned: false
 sdk: docker
 ---
 
-# RAG
+# HEXA GPT
+
+## A Research and Reading Assistant that Aids Dyslexic or Neurodivergent Individuals Intuitively Understand the Latest Cutting Edge Technologies Discussed in Recent Research Papers
+
+![HEXA LOGO](https://github.com/utilityfog/Skilltree/Enabling Technologies/HexaGPT/frontend/src/main/Hexa.png?raw=true)
+
 
 ## Installation
 
