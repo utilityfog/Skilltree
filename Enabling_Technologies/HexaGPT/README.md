@@ -10,7 +10,7 @@ sdk: docker
 
 ## A Research and Reading Assistant that Aids Dyslexic or Neurodivergent Individuals Intuitively Understand the Latest Cutting Edge Technologies Discussed in Recent Research Papers
 
-![HEXA LOGO](https://github.com/utilityfog/Skilltree/tree/main/Enabling_Technologies/HexaGPT/frontend/src?raw=true)
+![HEXA](./frontend/src/Hexa.png)
 
 
 ## Installation
