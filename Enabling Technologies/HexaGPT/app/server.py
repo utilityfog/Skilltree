@@ -14,11 +14,12 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from pathlib import Path
 from langchain.text_splitter import Language
 from langchain_experimental.text_splitter import SemanticChunker
+from langchain_core.documents.base import Document
 
 from importer.load_and_process import FileEmbedder
 from app.config import EMBEDDING_MODEL
 from app.embeddings_manager import get_embedding_from_manager, get_session_vector_store, reset_embeddings_storage, reset_session_vector_store, set_current_session_id, store_embedding
-from app.rag_chain import final_chain, solve_chain, preprocess_chain
+from app.rag_chain import final_chain, solve_chain, preprocess_chain, research_chain
 from app.JupyterAutocomplete import JupyterSolver
 # from app.config import EMBEDDING_MODEL, PG_COLLECTION_NAME
 
@@ -74,7 +75,7 @@ async def upload_file(files: List[UploadFile] = File(...), session_id: str = Hea
             file_extension = file.filename.split('.')[-1].lower()
             print(f"uploaded file_extension: {file_extension}")
             try:
-                if file_extension in ['pdf', 'ipynb', 'txt']:
+                if file_extension in ['pdf', 'ipynb', 'txt', 'csv']:
                     glob_pattern = f"**/*.{file_extension}"
                     await file_embedder.process_and_embed_file(unique_id=unique_id, directory_path=str(upload_folder), embeddings=embedding_method, glob_pattern=glob_pattern, text_splitter=text_splitter)
                 elif file_extension in ['py', 'js', 'ts', 'html']:
@@ -108,17 +109,11 @@ async def get_file(file_name: str):
     file_path = f"./uploaded_files/{file_name}"
     return FileResponse(path=file_path, filename=file_name, media_type='application/octet-stream')
 
-@app.post("/solve")
+@app.post("/process")
 async def solve(request: Request):
     """
     Calls a chain sequence that generates a jupyter notebook for a given input.
     """
-    print(f"request base_url: {request.base_url}")
-    # print(f"request auth: {request.auth}")
-    print(f"request app: {request.app}")
-    print(f"request method: {request.method}")
-    print(f"request body: {request.body}")
-    print(f"request query_params: {request.query_params}")
     
     # Redirect the current request to the newly added solve_chain route
     response = RedirectResponse("/preprocess/stream")
@@ -144,65 +139,64 @@ async def solve_jupyter(files: List[UploadFile] = File(...), session_id: str = H
     
     file_responses = []  # Initialize an empty list to store responses
     for file in files:
-        if file.content_type != 'application/x-ipynb+json':
+        # Check the file extension instead of content type
+        if not file.filename.endswith('.ipynb'):
             raise HTTPException(status_code=400, detail="Invalid file type. Please upload a Jupyter notebook.")
         
         unique_id = str(uuid.uuid4())
         save_path = upload_folder / f"{file.filename}"
-
+        
+        content = await file.read()  # Read the file content once
+        
         with open(save_path, "wb") as out_file:
-            out_file.write(await file.read())
+            out_file.write(content)  # Write the content to a file
             
-            content = await file.read()
+        nb = nbformat.reads(content.decode('utf-8'), as_version=4)
+        num_cells = len(nb.cells)
+        print(f"Notebook received with {num_cells} cells.")
             
-            nb = nbformat.reads(content.decode('utf-8'), as_version=4)
-            num_cells = len(nb.cells)
-            print(f"Notebook received with {num_cells} cells.")
-            
-            # Determine file type and set parameters for processing
-            file_extension = file.filename.split('.')[-1].lower()
-            print(f"uploaded file_extension: {file_extension}")
-            try:
-                if file_extension in ['pdf', 'ipynb', 'txt']:
-                    glob_pattern = f"**/*.{file_extension}"
-                    await file_embedder.process_and_embed_file(unique_id=unique_id, directory_path=str(upload_folder), embeddings=embedding_method, glob_pattern=glob_pattern, text_splitter=text_splitter)
-                elif file_extension in ['py', 'js', 'ts', 'html']:
-                    suffixes = ["."+file_extension] # [".py"]
-                    print(suffixes)
-                    await file_embedder.process_and_embed_file(unique_id=unique_id, directory_path=str(upload_folder), embeddings=embedding_method, suffixes=suffixes, language_setting=language_map.get(file_extension, None))
-                file_responses.append({"filename": file.filename, "unique_id": unique_id})
-            except Exception as e:
-                print(f"Error processing file {file.filename}: {e}")
-            finally:
-                # Delete the file after processing it to avoid redundancy
-                save_path.unlink(missing_ok=True)  # Use missing_ok=True to ignore the error if the file doesn't exist
+        # Determine file type and set parameters for processing
+        file_extension = file.filename.split('.')[-1].lower()
+        print(f"uploaded file_extension: {file_extension}")
+        
+        try:
+            if file_extension in ['pdf', 'ipynb', 'txt']:
+                glob_pattern = f"**/*.{file_extension}"
+                await file_embedder.process_and_embed_file(unique_id=unique_id, directory_path=str(upload_folder), embeddings=embedding_method, glob_pattern=glob_pattern, text_splitter=text_splitter)
+            elif file_extension in ['py', 'js', 'ts', 'html']:
+                suffixes = ["."+file_extension] # [".py"]
+                print(suffixes)
+                await file_embedder.process_and_embed_file(unique_id=unique_id, directory_path=str(upload_folder), embeddings=embedding_method, suffixes=suffixes, language_setting=language_map.get(file_extension, None))
+            file_responses.append({"filename": file.filename, "unique_id": unique_id})
+        except Exception as e:
+            print(f"Error processing file {file.filename}: {e}")
+        finally:
+            # Delete the file after processing it to avoid redundancy
+            save_path.unlink(missing_ok=True)  # Use missing_ok=True to ignore the error if the file doesn't exist
                             
-            # Retrieve the vector embeddings for the current notebook
-            embedded_current_notebook = get_embedding_from_manager(unique_id)
-            
-            # Get current session vector store
-            session_vector_store = get_session_vector_store(session_id, pre_delete_collection = False)
-            
-            current_notebook_documents = jupyter_solver.convert_embeddings_to_documents(embedded_current_notebook, session_vector_store)
-            
-            # Call autocomplete_and_execute_cells, which iterates through each cell of a jupyter notebook and uses the chat completions create api endpoint to generate a response.
-            await jupyter_solver.autocomplete_and_execute_cells(nb, current_notebook_documents, session_vector_store) # This method iterates cells of a notebook. This means the List[Document] argument should reset persistence as we iterate from uploaded notebook to notebook.
-            
-        # Reset session vector store and embeddings storage after processing all of the uploaded notebooks
-        reset_session_vector_store(session_id)
-        reset_embeddings_storage()
+        # Retrieve the vector embeddings for the current notebook
+        embedded_current_notebook = get_embedding_from_manager(unique_id)
+        
+        # Get current session vector store
+        session_vector_store = get_session_vector_store(session_id, pre_delete_collection = False)
+        
+        current_notebook_documents: List[List[Document]] = jupyter_solver.convert_embeddings_to_documents(embedded_current_notebook, session_vector_store)
+        
+        # Call autocomplete_and_execute_cells, which iterates through each cell of a jupyter notebook and uses the chat completions create api endpoint to generate a response.
+        await jupyter_solver.autocomplete_and_execute_cells(nb, current_notebook_documents, session_vector_store, embedding_method, text_splitter) # This method iterates cells of a notebook. This means the List[Document] argument should reset persistence as we iterate from uploaded notebook to notebook.
             
     if not file_responses:
         raise HTTPException(status_code=400, detail="No files were uploaded.") 
     
     return {"files": file_responses}
 
-# Edit this to add the chain you want to add
-add_routes(app, final_chain, path="/rag")
+add_routes(app, final_chain, path="/rag") # Main
 
 add_routes(app, preprocess_chain, path="/preprocess")
 
 add_routes(app, solve_chain, path="/jupyter")
+
+add_routes(app, research_chain, path="/research")
 
 if __name__ == "__main__":
     import uvicorn

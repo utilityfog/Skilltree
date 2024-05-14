@@ -1,2 +1,2 @@
 EMBEDDING_MODEL = 'text-embedding-ada-002'
-PG_COLLECTION_NAME = "pdf_rag" # Later switch name to RAG
+PG_COLLECTION_NAME = "TAR"

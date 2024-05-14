@@ -1,13 +1,12 @@
-<<<<<<< HEAD
 ---
-title: PDF HexaGPT Tutorial Repo
+title: PDF RAG Tutorial Repo
 emoji: 😜
 app_file: app/app.py
 pinned: false
 sdk: docker
 ---
 
-# HexaGPT
+# RAG
 
 ## Installation
 
@@ -30,7 +29,7 @@ langchain app add --repo $OWNER/$REPO
 # langchain app add git+https://github.com/hwchase17/chain-of-verification
 
 # with a custom api mount point (defaults to `/{package_name}`)
-langchain app add $PROJECT_NAME --api_path=/my/custom/path/HexaGPT
+langchain app add $PROJECT_NAME --api_path=/my/custom/path/rag
 ```
 
 Note: you remove packages by their api path
@@ -86,7 +85,3 @@ We also expose port 8080 with the `-p 8080:8080` option.
 ```shell
 docker run -e OPENAI_API_KEY=$OPENAI_API_KEY -p 8080:8080 my-langserve-app
 ```
-=======
-# Skilltree
-The Tree of my work and skillsets
->>>>>>> b7abd9855b9801667f733790f27844b869b0c72a

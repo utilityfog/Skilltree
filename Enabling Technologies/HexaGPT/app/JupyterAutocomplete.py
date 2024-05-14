@@ -1,11 +1,12 @@
 import uuid
-from fastapi import Path, Request
-from fastapi.responses import RedirectResponse
 import httpx
-from langchain_core.documents.base import Document
-from langchain_openai import OpenAIEmbeddings
 import nbformat
 
+from fastapi import Path, Request
+from fastapi.responses import RedirectResponse
+from langchain_core.documents.base import Document
+from langchain_openai import OpenAIEmbeddings
+from pathlib import Path as LibPath
 from typing import Dict, List, Optional, Tuple
 from nbclient import NotebookClient
 
@@ -111,8 +112,8 @@ class JupyterSolver:
         }
     ]
     
-    def convert_embeddings_to_documents(self, embeddings: List[List[float]], session_vector_store) -> List[Document]:
-        documents = []
+    def convert_embeddings_to_documents(self, embeddings: List[List[float]], session_vector_store) -> List[List[Document]]:
+        documents: List[List[Document]] = []
         if embeddings:
             for embedding in embeddings:
                 summarized_embedding = session_vector_store.similarity_search_by_vector(embedding=embedding, k=1) # summarized_embedding is guaranteed to be a Document object
@@ -120,7 +121,7 @@ class JupyterSolver:
         else:
             print("Current Embeddings None!")
             return
-        return documents
+        return documents # type = List[List[Document]]
     
     def is_response_code(self, completion) -> bool:
         """
@@ -136,7 +137,7 @@ class JupyterSolver:
         
         return completion, any(indicator in completion for indicator in code_indicators)
     
-    async def send_for_completion(self, current_cell_content: str, persistent_context: List[Document], previous_context: List[Document]) -> Tuple[str, bool]:
+    async def send_for_completion(self, current_cell_content: str, persistent_context: List[List[Document]], previous_context: List[List[Document]]) -> Tuple[str, bool]:
         """
         Function to send cell content for autocompletion and determine if the response is code.
         """
@@ -218,19 +219,24 @@ class JupyterSolver:
         #     if inp_post_response .status_code == 200:
         #         print(json.loads(test_get_response.content.decode('utf-8')))
         
+        ###########################################################################
+        
         # Use a modified version of the above to:
             # Make a direct request with current_cell_content as the problem parameter, persistent_context as the persistent_cell_context parameter and previous_context as the previous_cells_context parameter
                 # Making a direct request to the /jupyter/stream endpoint will trigger the execution of solve_chain in rag_chain.py
                 # I need to make a direct request to /jupyter/stream instead of just invoking the associated chain because there are some other necessary things done by
                 # the api handler when sending a request to /jupyter/stream
                 
+        print(f"current cell context: {current_cell_content}")
+        print(f"persistent context: {persistent_context}")
+        print(f"previous context: {previous_context}")
+                
         request_payload = {
-            "current_cell_content": current_cell_content,
-            "persistent_context": [doc.to_dict() for doc in persistent_context],
-            "previous_context": [doc.to_dict() for doc in previous_context],
+            "problem": current_cell_content,
+            "persistent_context": persistent_context,
+            "previous_context": previous_context,
         }
 
-        # Hypothetical URL construction; replace with actual server info
         url = "http://localhost:8000/jupyter/stream"
         
         # Asynchronously send the request using httpx
@@ -238,21 +244,16 @@ class JupyterSolver:
             response = await client.post(url, json=request_payload)
             
         # Process the response
-        # This is placeholder logic; replace with actual response processing
         if response.status_code == 200:
             response_data = response.json()
-            completion = response_data.get("completion")
+            print(f"JupyterAutocomplete.py response_data for ith cell: {response_data}")
+            completion = response_data.get("completion", "")
             # Further process completion to handle math symbols, LaTeX formatting, etc.
             # The `is_response_code` logic needs to be adjusted or integrated here
-            is_code = self.is_response_code(completion)
+            is_code = '```' in completion
         else:
             completion = "Error processing completion"
             is_code = False
-        
-        # Determining if the response is code
-        completion, is_code = self.is_response_code(completion)
-            # If completion type is markdown, do not modify completion and just return it again
-            # If completion type is code, completion should be just the extracted formatted string within each ```enclosing```
 
         return completion, is_code
 
@@ -263,12 +264,19 @@ class JupyterSolver:
         client = NotebookClient(nb, kernel_name=kernel_name)
         await client.execute_cell(index=cell_index)
         
-    async def embed_cell_content(self, cell_path: Path, cell_id):
+    async def embed_cell_content(self, embedding_method, text_splitter, notebook_path, cell_path: LibPath, cell_id):
         # Assume `FileEmbedder` can process individual cell files similarly to notebook files
         file_embedder = FileEmbedder(session_id=get_current_session_id(), pre_delete_collection=False)
-        await file_embedder.process_and_embed_file(unique_id=cell_id, directory_path=str(cell_path.parent), embeddings=OpenAIEmbeddings(...), glob_pattern=str(cell_path.name))
+        # print(f"embed cell content's cell path: {cell_path}")
+        # print(f"embed cell content's cell path parent: {cell_path.parent}")
+        # print(f"embed cell content's cell path name: {cell_path.name}")
+        
+        file_extension = str(cell_path).split('.')[-1].lower()
+        glob_pattern = f"**/*.{file_extension}"
+        
+        await file_embedder.process_and_embed_file(unique_id=cell_id, directory_path=str(notebook_path), embeddings=embedding_method, glob_pattern=glob_pattern, text_splitter=text_splitter)
     
-    async def autocomplete_and_execute_cells(self, nb: nbformat.NotebookNode, current_notebook_documents: List[Document], session_vector_store) -> nbformat.NotebookNode:
+    async def autocomplete_and_execute_cells(self, nb: nbformat.NotebookNode, current_notebook_documents: List[List[Document]], session_vector_store, embedding_method, text_splitter) -> nbformat.NotebookNode:
         """
         Iterate through each cell of a Jupyter notebook, autocomplete each cell by sending it to a chat completions API,
         executes the cell if it's a code cell, and appends the completion or execution output as a new cell right below.
@@ -277,7 +285,7 @@ class JupyterSolver:
         accumulated_cell_ids = []
         
         # Directory for cells of a notebook
-        notebook_dir = Path(f"./notebook_cells/{uuid.uuid4()}")
+        notebook_dir = LibPath(f"./notebook_cells/{uuid.uuid4()}")
         notebook_dir.mkdir(parents=True, exist_ok=True)
 
         for cell_index, cell in enumerate(nb.cells):
@@ -289,7 +297,7 @@ class JupyterSolver:
                 f.write(cell.source)
                 
             # Embed current cell content
-            await self.embed_cell_content(cell_path, cell_id)
+            await self.embed_cell_content(embedding_method, text_splitter, notebook_dir, cell_path, cell_id)
             
             # Append processed cell to accumulated_cells
             accumulated_cells.append(cell)
@@ -297,12 +305,12 @@ class JupyterSolver:
             # Append processed cell_id to accumulated_cell_ids
             accumulated_cell_ids.append(cell_id)
             
-            previous_context = []
+            previous_context: List[List[Document]] = []
             
-            # Previous Context extraction as List[Document]Logic
+            # Previous Context extraction as List[Document] Logic
             for cell_id in accumulated_cell_ids:
-                embedding = get_embedding_from_manager(cell_id)
-                documents = self.convert_embeddings_to_documents(embedding, session_vector_store)
+                embeddings = get_embedding_from_manager(cell_id) # embeddings is a List[List[float]]
+                documents = self.convert_embeddings_to_documents(embeddings, session_vector_store)
                 previous_context.extend(documents)
                 
             # Determine cell type based on completion response, not input cell
@@ -325,12 +333,12 @@ class JupyterSolver:
                     f.write(completion_cell.source)
                     
                 # Embed current cell content
-                await self.embed_cell_content(completion_cell_path, completion_cell_id)
+                await self.embed_cell_content(embedding_method, text_splitter, notebook_dir, completion_cell_path, completion_cell_id)
                 
                 # Append to accumulated_cell_ids
                 accumulated_cell_ids.append(completion_cell_id)
                 
-                # Append to List that will be appended to accumulated_cells
+                # Append to List that will extend accumulated_cells
                 append.append(completion_cell)
                 
                 # This part likely requires a lot of debugging because the initial completion_cell made from an initial completion_response may cause errors.
@@ -349,7 +357,7 @@ class JupyterSolver:
                     f.write(code_output_cell.source)
                     
                 # Embed current cell content
-                await self.embed_cell_content(output_cell_path, output_cell_id)
+                await self.embed_cell_content(embedding_method, text_splitter, notebook_dir, output_cell_path, output_cell_id)
                 
                 # Append to accumulated_cell_ids
                 accumulated_cell_ids.append(output_cell_id)
@@ -370,7 +378,7 @@ class JupyterSolver:
                     f.write(code_output_cell.source)
                     
                 # Embed current cell content
-                await self.embed_cell_content(completion_cell_path, completion_cell_id)
+                await self.embed_cell_content(embedding_method, text_splitter, notebook_dir, completion_cell_path, completion_cell_id)
                 
                 # Append to accumulated_cell_ids
                 accumulated_cell_ids.append(completion_cell_id)

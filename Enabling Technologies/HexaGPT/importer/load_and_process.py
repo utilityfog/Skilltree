@@ -7,11 +7,12 @@ from langchain_community.document_transformers.embeddings_redundant_filter impor
 
 from dotenv import load_dotenv
 # pdf, ipynb, txt
-from langchain_community.document_loaders import DirectoryLoader, UnstructuredPDFLoader, TextLoader, NotebookLoader
+from langchain_community.document_loaders import DirectoryLoader, UnstructuredPDFLoader, TextLoader, NotebookLoader, UnstructuredCSVLoader
 # Code
 from langchain_community.document_loaders.generic import GenericLoader
 from langchain_community.document_loaders.parsers import LanguageParser
 from langchain_community.vectorstores.pgvector import PGVector
+
 from langchain.vectorstores.deeplake import DeepLake
 from langchain.text_splitter import Language
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -19,9 +20,11 @@ from langchain_experimental.text_splitter import SemanticChunker
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import CharacterTextSplitter
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 from openai import OpenAI
 from nbconvert import MarkdownExporter
 from PIL import Image
+from unstructured.partition.auto import partition
 
 from app.embeddings_manager import get_session_vector_store, store_embedding, get_current_session_id
 from app.config import EMBEDDING_MODEL, PG_COLLECTION_NAME
@@ -103,7 +106,7 @@ class InitialProcessor:
     
 class FileProcessor:
     async def process_documents(self, directory_path, glob_pattern, loader_cls, text_splitter, embeddings, session_vector_store=None):
-        """To ensure that your process_documents method accurately processes only PDF files, you can modify the glob_pattern parameter used in the DirectoryLoader to specifically target PDF files. This adjustment will make the method more focused and prevent it from attempting to process files of other types, which might not be suitable for the intended processing pipeline."""
+        """To ensure that the process_documents method accurately processes only PDF files, one can modify the glob_pattern parameter used in the DirectoryLoader to specifically target PDF files. This adjustment will make the method more focused and prevent it from attempting to process files of other types, which might not be suitable for the intended processing pipeline."""
         # pdf_glob_pattern = "**/*.pdf"  # Updated to specifically target PDF files
         print(f"loader_cls: {loader_cls}")
         loader = DirectoryLoader(
@@ -115,8 +118,38 @@ class FileProcessor:
             loader_cls=loader_cls,
         )
         docs = loader.load()
+        
+        # print(f"docs before chunking: {docs}")
+        
+        # Get the name of each pdf file in the directory_path
+        
+        # pdf_name = ""
+        
+        # get filepath
+        # filepath = f"{directory_path}/{pdf_name}.pdf"
+        
+        # get image container folder for pdf
+        # image_write_folder_path = f"{directory_path}/{pdf_name}_images"
+        
+        # raw_pdf_elements = partition(
+        #     filename=filepath,
+        #     content_type="application/pdf",
+        #     extract_images_in_pdf=True,
+        #     chunking_strategy="basic",
+        #     max_characters=160000,
+        #     extract_image_block_output_dir=image_write_folder_path
+        # )
+        
+        extracted_extension = glob_pattern.split('.')[-1]
+        
+        chunks = docs
+        
         # Split documents into meaningful chunks
-        chunks = text_splitter.split_documents(docs)
+        if extracted_extension!='csv':
+            chunks = text_splitter.split_documents(docs)
+        
+        # print(f"docs after chunking: {chunks}")
+        
         store, current_embeddings = await PGVector.from_documents(
             documents=chunks,
             embedding=embeddings,
@@ -127,6 +160,7 @@ class FileProcessor:
         )
         
         if session_vector_store:
+            print(f"docs before chunking: {chunks}")
             store, current_embeddings = await session_vector_store.from_documents(
                 documents=chunks,
                 embedding=embeddings,
@@ -190,6 +224,7 @@ class FileEmbedder:
             'pdf': {"func": file_processor.process_documents, "args": {"loader_cls": UnstructuredPDFLoader}},
             'ipynb': {"func": file_processor.process_documents, "args": {"loader_cls": NotebookLoader}},
             'txt': {"func": file_processor.process_documents, "args": {"loader_cls": TextLoader}},
+            'csv': {"func": file_processor.process_documents, "args": {"loader_cls": UnstructuredCSVLoader}},
             'code': {"func": file_processor.process_code, "args": {"suffixes": suffixes, "language_setting": language_setting}},
             # Image processing to be implemented later
         }
@@ -204,7 +239,7 @@ class FileEmbedder:
             process_func = processing_info["func"]
             process_args = processing_info["args"]
 
-            if file_type in ['pdf', 'ipynb', 'txt']:
+            if file_type in ['pdf', 'ipynb', 'txt', 'csv']:
                 current_embeddings = await process_func(directory_path=directory_path, glob_pattern=glob_pattern, **process_args, text_splitter=text_splitter, embeddings=embeddings, session_vector_store=self.session_vector_store)
             elif file_type == 'code':
                 current_embeddings = await process_func(repo_path=directory_path, **process_args, embeddings=embeddings, session_vector_store=self.session_vector_store)
@@ -274,29 +309,29 @@ async def main():
     # await file_processor.process_documents("./source_docs", "**/*.pdf", UnstructuredPDFLoader, text_splitter, embeddings)
 
     # Process Code Files (main languages Using the language parser itself)
-    # await process_code("/Users/james/Desktop/GitHub/pdf_rag/venv/lib/python3.11/site-packages/langserve", [".py"], Language.PYTHON, embeddings)
-    # await process_code("/Users/james/Desktop/GitHub/pdf_rag/venv/lib/python3.11/site-packages/langserve", [".js"], Language.JS, embeddings)
-    # await process_code("/Users/james/Desktop/GitHub/pdf_rag/venv/lib/python3.11/site-packages/langserve", [".html"], Language.HTML, embeddings)
-    # await process_code("/Users/james/Desktop/GitHub/pdf_rag/venv/lib/python3.11/site-packages/langserve", [".ts"], Language.TS, embeddings)
+    # await process_code("./venv/lib/python3.11/site-packages/langserve", [".py"], Language.PYTHON, embeddings)
+    # await process_code("./lib/python3.11/site-packages/langserve", [".js"], Language.JS, embeddings)
+    # await process_code("./venv/lib/python3.11/site-packages/langserve", [".html"], Language.HTML, embeddings)
+    # await process_code("./venv/lib/python3.11/site-packages/langserve", [".ts"], Language.TS, embeddings)
     
-    # await file_processor.process_code("/Users/james/Desktop/GitHub/pdf_rag/frontend", [".py"], Language.PYTHON, embeddings)
-    # await file_processor.process_code("/Users/james/Desktop/GitHub/pdf_rag/frontend", [".js"], Language.JS, embeddings)
+    # await file_processor.process_code("./frontend", [".py"], Language.PYTHON, embeddings)
+    # await file_processor.process_code("./frontend", [".js"], Language.JS, embeddings)
     
-    # await file_processor.process_code("/Users/james/Desktop/GitHub/pdf_rag/app", [".py"], Language.PYTHON, embeddings)
-    # await file_processor.process_code("/Users/james/Desktop/GitHub/pdf_rag/app", [".js"], Language.JS, embeddings)
+    # await file_processor.process_code("./app", [".py"], Language.PYTHON, embeddings)
+    # await file_processor.process_code("./app", [".js"], Language.JS, embeddings)
     
-    # await file_processor.process_code("/Users/james/Desktop/GitHub/pdf_rag/importer", [".py"], Language.PYTHON, embeddings)
-    # await file_processor.process_code("/Users/james/Desktop/GitHub/pdf_rag/importer", [".js"], Language.JS, embeddings)
+    # await file_processor.process_code("./importer", [".py"], Language.PYTHON, embeddings)
+    # await file_processor.process_code("./importer", [".js"], Language.JS, embeddings)
     
-    # await file_processor.process_code("/Users/james/Desktop/GitHub/pdf_rag/venv/lib/python3.11/site-packages/langserve", [".py"], Language.PYTHON, embeddings)
-    # await file_processor.process_code("/Users/james/Desktop/GitHub/pdf_rag/venv/lib/python3.11/site-packages/langserve", [".js"], Language.JS, embeddings)
+    # await file_processor.process_code("./venv/lib/python3.11/site-packages/langserve", [".py"], Language.PYTHON, embeddings)
+    # await file_processor.process_code("./venv/lib/python3.11/site-packages/langserve", [".js"], Language.JS, embeddings)
     
     # await file_processor.process_code("./source_code", [".py"], Language.PYTHON, embeddings)
     # await file_processor.process_code("./source_code", [".js"], Language.JS, embeddings)
     # await file_processor.process_code("./source_code", [".ts"], Language.TS, embeddings)
 
     # Repository Processor for code in multiple languages (after conversion of code to text)
-    # repo_processor = RepositoryProcessor(clone_path="/Users/james/Desktop/GitHub/pdf_rag", deeplake_path=os.path.expanduser("~/deeplake_data"), allowed_extensions=[".py", ".js", ".md", ".ts", ".tsx", ".html", ".css"])
+    # repo_processor = RepositoryProcessor(clone_path="./", deeplake_path=os.path.expanduser("~/deeplake_data"), allowed_extensions=[".py", ".js", ".md", ".ts", ".tsx", ".html", ".css"])
     # print(os.path.expanduser("~/deeplake_data"))
     # repo_processor.process_repository()
     # repo_processor.delete_embeddings()

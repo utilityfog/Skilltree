@@ -442,7 +442,12 @@ disable=raw-checker-failed,
         broad-exception-caught,
         unused-variable,
         ungrouped-imports,
-        unnecessary-lambda
+        unnecessary-lambda,
+        no-member,
+        arguments-renamed,
+        global-statement,
+        redefined-builtin,
+        unused-argument
 
 # Enable the message, report, category or checker with the given id(s). You can
 # either give multiple identifier separated by comma (,) or put this option

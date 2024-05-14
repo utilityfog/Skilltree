@@ -112,12 +112,23 @@ function App() {
 
   // Change this to an array to hold multiple file IDs
   const [uploadedFileIds, setUploadedFileIds] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  // Bool for context fetching
+  const [fetchContext, setFetchContext] = useState(true); // Default to true
+
 
   const handleSendMessage = async (message: string) => {
     setInputValue("")
     closeCurrentEventSource(); // Close the previous event source if open
 
-    const endpoint = isSolveMode ? '/solve' : '/rag/stream'; // Choose endpoint based on mode
+    setIsLoading(true); // Start loading
+
+    let endpoint = '/rag/stream'; // Default endpoint
+    if (isMode === 'solve') {
+      endpoint = '/preprocess/stream';
+    } else if (isMode === 'research') {
+      endpoint = '/research/stream';
+    }
 
     const messagePayload = {
       message: formatMessageForDisplay(message),
@@ -130,8 +141,9 @@ function App() {
     const bodyPayload = {
       input: {
         question: message,
-        file_embedding_keys: uploadedFileIds || {}, // Include the file_embedding_keys if they exists.
-        session_id: sessionId || {}
+        file_embedding_keys: uploadedFileIds || {}, // Include the file_embedding_keys if they exist.
+        session_id: sessionId || {},
+        fetchContext: fetchContext,
       }
     };
   
@@ -147,10 +159,12 @@ function App() {
         if (event.event === "data") {
           handleReceiveMessage(event.data);
         }
+        setIsLoading(false); // Stop loading when data is received
       },
       onerror(error) {
         console.error('EventSource failed:', error);
         // Handle the error here, such as updating the UI to inform the user
+        setIsLoading(false); // Stop loading when data is received
       },
     });
 
@@ -212,14 +226,20 @@ function App() {
         formData.append('files', file);
       });
 
-      console.log(formData.get('files'));
-
-      const headers = new Headers();
-      if (sessionId) {
-        headers.append('session-id', sessionId); // Adjust the header name here
+      let endpoint = '/upload'; // Default endpoint
+      if (isMode === 'solve') {
+        endpoint = '/solve_jupyter';
+      } else if (isMode === 'research') {
+        endpoint = '/research_assistant'; // Assuming this is the endpoint for research mode
       }
 
-      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/upload`, {
+      // console.log(formData.get('files'));
+      const headers = new Headers();
+      if (sessionId) {
+        headers.append('session-id', sessionId);
+      }
+
+      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}${endpoint}`, {
         method: 'POST',
         headers: headers,
         body: formData,
@@ -229,7 +249,7 @@ function App() {
         throw new Error('Network response was not ok');
       }
       const data = await response.json();
-      console.log(data.files);
+      // console.log(data.files);
       // data is expected to be an array of file information
       data.files.forEach((fileInfo: { unique_id: string; filename: string; }) => {
         handleUploadFiles(fileInfo.unique_id, fileInfo.filename);
@@ -238,13 +258,22 @@ function App() {
     }
   };
 
-  const [isSolveMode, setIsSolveMode] = useState(false);
+  // Spinner component
+  function Spinner() {
+    return (
+      <div className="spinner-container">
+        <div className="loading-spinner"></div>
+      </div>
+    );
+  }
+
+  const [isMode, setIsMode] = useState('rag');  // Default to 'Chat Mode'
 
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
       <header className="bg-gray-800 text-white text-center p-4">
         <img src={logo} alt="Hexa Logo" style={{width: '25%', height: 'auto'}} className="mx-auto" /> {/* Logo will be centered */}
-        <h1 style={{ fontFamily: "Origin", color: "#a2fcf5"}} className="text-6xl font-bold">Hexa GPT</h1> {/* Increased font size */}
+        <h1 style={{ fontFamily: "Origin", color: "#a2fcf5"}} className="text-6xl font-bold">HEXA GPT</h1> {/* Increased font size */}
         <h3 style={{ fontFamily: "Origin", color: "#FFFFFF"}} className="text-2xl font-bold">A Research and Reading Assistant that Aids Dyslexic or Neurodivergent Individuals Intuitively Understand the Latest Cutting Edge Technologies Discussed in Recent Research Papers</h3>
       </header>
       <main className="flex-grow container mx-auto p-4 flex-col">
@@ -273,6 +302,7 @@ function App() {
                 )}
               </div>
             ))}
+            {isLoading && <Spinner />} {/* Loading spinner displayed when isLoading is true */}
           </div>
           <div className="p-4 bg-gray-800">
             <textarea
@@ -295,7 +325,7 @@ function App() {
                 type="file"
                 multiple
                 onChange={handleFileSelect}
-                accept=".png,.jpg,.jpeg,.pdf,.ipynb,.py,.js" // Accepted file types
+                accept=".png,.jpg,.jpeg,.pdf,.ipynb,.csv,.py,.js" // Accepted file types
                 className="form-input mb-2"
               />
               <button
@@ -306,8 +336,8 @@ function App() {
               </button>
             </form>
 
-            {/* Solver Toggle */}
-            <label className="switch">
+            {/* Mode Selector */}
+            {/* <label className="switch">
               <input
                 type="checkbox"
                 checked={isSolveMode}
@@ -315,7 +345,27 @@ function App() {
               />
               <span className="slider round"></span>
             </label>
-            <span>{isSolveMode ? 'Solve Mode' : 'Chat Mode'}</span>
+            <span>{isSolveMode ? 'Solve Mode' : 'Chat Mode'}</span> */}
+            <select
+              value={isMode}
+              onChange={(e) => setIsMode(e.target.value)}
+              className="bg-gray-800 text-white p-2 rounded"
+            >
+              <option value="chat">Chat Mode</option>
+              <option value="solve">Solve Jupyter Mode</option>
+              <option value="research">Research Mode</option>
+              <option value="search">Search Mode</option>
+            </select>
+            <div className="toggle-container">
+              <label>
+                Fetch Context:
+                <input
+                  type="checkbox"
+                  checked={fetchContext}
+                  onChange={() => setFetchContext(!fetchContext)}
+                />
+              </label>
+            </div>
           </div>
         </div>
 

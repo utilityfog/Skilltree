@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Directory containing the template projects
-TEMPLATES_DIR="/Users/james/Desktop/GitHub/langchain/templates"
+TEMPLATES_DIR="./langchain/templates"
 
 # Navigate to the templates directory
 cd "$TEMPLATES_DIR"
