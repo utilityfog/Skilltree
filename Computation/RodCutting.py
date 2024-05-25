@@ -4,12 +4,11 @@
 # How can we cut the rod such that we maximize the revenue earned by selling its parts?
 
 # prices = 첫 원소부터 시작해서 길이가 그 원소의 인덱스 만한 막대기의 가격이 각 원소 값인 배열
-prices = [0,1,3,3,6,7,8,11,12,12,14] # e.g. max(n) = 10
+prices = [0,2,3,3,2,7,5,13,12,11,14] # e.g. max(n) = 10
 
 def cut_rod(n: int, prices: [int]):
     """
     Method that solves the rod cutting problem.
-    Assumptions: Individual rod-length prices increase or remain the same with respect to increases in length.
     """
     n_minus_one = n-1 # Produces error otherwise
     revenues_without_one = [0]*n_minus_one # initialize with n-1 0's
