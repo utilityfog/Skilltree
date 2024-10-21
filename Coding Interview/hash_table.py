@@ -3,15 +3,14 @@ INITIAL_CAPACITY = 50
 
 # Node data structure - essentially a LinkedList node
 class Node:
-    def __init__(self, key, value):
-        self.key = key
-        self.value = value
-        self.next = None
-    def __str__(self):
-        return "<Node: (%s, %s), next: %s>" % (self.key, self.value, self.next != None)
-    def __repr__(self):
-        return str(self)
-
+	def __init__(self, key, value):
+		self.key = key
+		self.value = value
+		self.next = None
+	def __str__(self):
+		return "<Node: (%s, %s), next: %s>" % (self.key, self.value, self.next != None)
+	def __repr__(self):
+		return str(self)
 # Hash table with separate chaining
 class HashTable:
 	# Initialize hash table
